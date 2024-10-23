@@ -27,9 +27,8 @@ class CustomError(Exception):
 
 
 class DummyEndpoint:
-    @property
-    def endpoint(self) -> str:
-        return "endpoint"
+    def __init__(self) -> None:
+        self.failure_reason = "a reason"
 
     @raises(400, "bad thing")
     async def raise_bad_request(self) -> NoReturn:
@@ -39,7 +38,7 @@ class DummyEndpoint:
     async def raise_unauthorized(self) -> NoReturn:
         raise ClientResponseError(cast(RequestInfo, None), (), status=401)
 
-    @raises(403, "bad thing")
+    @raises(403, "Access forbidden: {reason}")
     async def raise_forbidden(self) -> NoReturn:
         raise ClientResponseError(cast(RequestInfo, None), (), status=403)
 
@@ -81,7 +80,7 @@ async def test_raises() -> None:
     with pytest.raises(UnauthorizedError):
         await dummy.raise_unauthorized()
 
-    with pytest.raises(ForbiddenError):
+    with pytest.raises(ForbiddenError, match="Access forbidden: a reason"):
         await dummy.raise_forbidden()
 
     with pytest.raises(NotFoundError):

@@ -144,6 +144,12 @@ def raise_for_endpoint(
     message_input = {}
 
     with suppress(AttributeError):
+        message_input["reason"] = endpoint.failure_reason
+    with suppress(AttributeError):
+        message_input["reason"] = endpoint._remote.failure_reason
+    message_input["reason"] = message_input.get("reason", exception.message)
+
+    with suppress(AttributeError):
         message_input["id"] = endpoint.id
         message_input["endpoint"] = endpoint.endpoint
         message_input["rev"] = cast(str, endpoint._data.get("_rev"))
