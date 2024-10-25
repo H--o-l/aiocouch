@@ -37,7 +37,7 @@ from urllib.parse import quote
 import aiohttp
 
 from . import database, document
-from .exception import NotFoundError, generator_raises, raises
+from .exception import NotFoundError, generator_raises, raises, ClientResponseError
 from .typing import JsonDict
 
 
@@ -97,7 +97,6 @@ class RemoteServer:
         auth = aiohttp.BasicAuth(user, password, "utf-8") if user and password else None
         headers = {"Cookie": "AuthSession=" + cookie} if cookie else None
         self._http_session = aiohttp.ClientSession(headers=headers, auth=auth, **kwargs)
-        self.failure_reason = None
 
     async def _get(self, path: str, params: Optional[JsonDict] = None) -> RequestResult:
         return await self._request("GET", path, params=params)
@@ -162,12 +161,20 @@ class RemoteServer:
             method, url=f"{self._server}{path}", **kwargs
         ) as resp:
             if not resp.ok:
-                # Save the reason for later if any
-                try:
-                    self.failure_reason = (await resp.json())["reason"]
-                except:
-                    self.failure_reason = None
-            resp.raise_for_status()
+                reason = None
+                with suppress(Exception):
+                    reason = (await resp.json())["reason"]
+                # Copied from aiohttp raise_for_status():
+                assert resp.reason is not None
+                resp.release()
+                raise ClientResponseError(
+                    reason,
+                    resp.request_info,
+                    resp.history,
+                    status=resp.status,
+                    message=resp.reason,
+                    headers=resp.headers,
+                )
             return (
                 HTTPResponse(resp),
                 await resp.json() if return_json else await resp.read(),
@@ -187,12 +194,20 @@ class RemoteServer:
             method, url=f"{self._server}{path}", **kwargs
         ) as resp:
             if not resp.ok:
-                # Save the reason for later if any
-                try:
-                    self.failure_reason = (await resp.json())["reason"]
-                except:
-                    self.failure_reason = None
-            resp.raise_for_status()
+                reason = None
+                with suppress(Exception):
+                    reason = (await resp.json())["reason"]
+                # Copied from aiohttp raise_for_status():
+                assert resp.reason is not None
+                resp.release()
+                raise ClientResponseError(
+                    reason,
+                    resp.request_info,
+                    resp.history,
+                    status=resp.status,
+                    message=resp.reason,
+                    headers=resp.headers,
+                )
 
             async for line in resp.content:
                 # this should only happen for empty lines
@@ -244,7 +259,7 @@ class RemoteDatabase:
         try:
             await self._remote._head(self.endpoint)
             return True
-        except aiohttp.ClientResponseError as e:
+        except ClientResponseError as e:
             if e.status == 404:
                 return False
             else:
@@ -473,7 +488,7 @@ class RemoteAttachment:
             )
             self.content_type = response.headers["Content-Type"]
             return True
-        except aiohttp.ClientResponseError as e:
+        except ClientResponseError as e:
             if e.status == 404:
                 return False
             else:
